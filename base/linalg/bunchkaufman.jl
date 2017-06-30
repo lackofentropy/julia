@@ -96,9 +96,9 @@ end
     getindex(B::BunchKaufman, d::Symbol)
 
 Extract the factors of the Bunch-Kaufman factorization `B`. The factorization can take the
-two forms `L*D*L.'` or `U*D*U.'` where `L` is a `UnitLowerTriangular` matrix, `U` is a
-`UnitUpperTriangular`, and `D` is a block diagonal matrix with 1x1 or 2x2 blocks. The argument
-`d` can be
+two forms `L*D*L'` or `U*D*U'` (or `.'` in the complex symmetric case) where `L` is a
+`UnitLowerTriangular` matrix, `U` is a `UnitUpperTriangular`, and `D` is a block diagonal
+symmetric or Hermitian matrix with 1x1 or 2x2 blocks. The argument `d` can be
 - `:D`: the block diagonal matrix
 - `:L`: the lower triangular factor (if factorization is `L*D*L.'`)
 - `:U`: the lower triangular factor (if factorization is `U*D*U.'`)
@@ -144,20 +144,13 @@ function getindex(B::BunchKaufman{T}, d::Symbol) where {T<:BlasFloat}
             LUD, od = LAPACK.syconv!(B.uplo, copy(B.LD), B.ipiv)
         end
         if d == :D
-            D = diagm(diag(LUD))
-            for i in 1:n
-                if !iszero(od[i])
-                    odi = od[i]
-                    if B.uplo == 'L'
-                        D[i, i + 1] = B.symmetric ? odi : odi'
-                        D[i + 1, i] = odi
-                    else # 'U'
-                        D[i, i - 1] = B.symmetric ? odi : odi'
-                        D[i - 1, i] = odi
-                    end
-                end
+            if B.uplo == 'L'
+                odl = od[1:n - 1]
+                return Tridiagonal(odl, diag(LUD), B.symmetric ? odl : conj.(odl))
+            else # 'U'
+                odu = od[2:n]
+                return Tridiagonal(B.symmetric ? odu : conj.(odu), diag(LUD), odu)
             end
-            return D
         elseif d == :L
             if B.uplo == 'L'
                 return UnitLowerTriangular(LUD)
